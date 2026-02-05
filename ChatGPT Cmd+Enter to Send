@@ -1,0 +1,44 @@
+// ==UserScript==
+// @name         ChatGPT Cmd+Enter to Send
+// @namespace    http://tampermonkey.net/
+// @version      1.0
+// @description  Cmd+Enter to send, Enter for newline
+// @match        https://chatgpt.com/*
+// @match        https://chat.openai.com/*
+// @run-at       document-start
+// @grant        none
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter') return;
+
+        const textarea = document.querySelector('#prompt-textarea');
+        if (!textarea || e.target !== textarea) return;
+
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        if (e.metaKey) {
+            // Cmd+Enter: 发送
+            const sendButton = document.querySelector('button[data-testid="send-button"]')
+                            || document.querySelector('button[aria-label*="Send"]');
+            if (sendButton && !sendButton.disabled) {
+                sendButton.click();
+            }
+        } else {
+            // Enter: 换行
+            const start = textarea.selectionStart;
+            const end = textarea.selectionEnd;
+            const value = textarea.value;
+
+            textarea.value = value.substring(0, start) + '\n' + value.substring(end);
+            textarea.selectionStart = textarea.selectionEnd = start + 1;
+
+            // 触发 input 事件
+            textarea.dispatchEvent(new Event('input', {bubbles: true}));
+        }
+    }, true);
+})();

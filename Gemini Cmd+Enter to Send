@@ -1,0 +1,130 @@
+// ==UserScript==
+// @name         Gemini Cmd+Enter to Send
+// @namespace    http://tampermonkey.net/
+// @version      1.1
+// @description  Cmd+Enter to send, Enter for newline on Gemini
+// @author       Modified from Hayaokuri's work
+// @match        https://gemini.google.com/*
+// @grant        none
+// @run-at       document-end
+// ==/UserScript==
+
+(function() {
+    'use strict';
+
+    const inputSelectorPrimary = 'div.ql-editor[contenteditable="true"]';
+    const inputSelectorsFallback = [
+        'textarea[enterkeyhint="send"]',
+        'textarea[aria-label*="Prompt"]',
+        'textarea[placeholder*="Message Gemini"]',
+        'div[role="textbox"][contenteditable="true"]'
+    ];
+
+    // 更新后的发送按钮选择器 - 根据实际HTML结构
+    const sendButtonSelectors = [
+        'button.send-button',  // 主要选择器
+        'button[aria-label*="停止"]',  // 停止按钮(生成时)
+        'button[jslog*="188689"]',  // 通过jslog属性
+        '.send-button-container button'  // 通过容器
+    ];
+
+    let textarea = null;
+
+    function findTextarea() {
+        let el = document.querySelector(inputSelectorPrimary);
+        if (el) { return el; }
+        for (const selector of inputSelectorsFallback) {
+            el = document.querySelector(selector);
+            if (el) { return el; }
+        }
+        return null;
+    }
+
+    function findSendButton() {
+        for (const selector of sendButtonSelectors) {
+            const el = document.querySelector(selector);
+            if (el) return el;
+        }
+        return null;
+    }
+
+    function handleKeydown(event) {
+        if (event.target !== textarea && (!textarea || !textarea.contains(event.target))) {
+            return;
+        }
+
+        if (event.key === 'Enter') {
+            if (event.metaKey) {
+                // Cmd+Enter: 发送
+                event.preventDefault();
+                event.stopImmediatePropagation();
+
+                const sendButton = findSendButton();
+                if (sendButton && !sendButton.disabled) {
+                    sendButton.click();
+                } else {
+                    console.log('Send button not found or disabled');
+                }
+            } else {
+                // Enter: 换行
+                event.preventDefault();
+                event.stopImmediatePropagation();
+
+                const effectiveInputArea = textarea;
+
+                if (effectiveInputArea.isContentEditable) {
+                    effectiveInputArea.focus();
+                    let success = document.execCommand('insertParagraph', false, null);
+                    if (!success) {
+                        effectiveInputArea.focus();
+                        document.execCommand('insertHTML', false, '<br>');
+                    }
+                } else if (effectiveInputArea.tagName && effectiveInputArea.tagName.toUpperCase() === 'TEXTAREA') {
+                    const start = effectiveInputArea.selectionStart;
+                    const end = effectiveInputArea.selectionEnd;
+                    effectiveInputArea.value = effectiveInputArea.value.substring(0, start) + "\n" + effectiveInputArea.value.substring(end);
+                    effectiveInputArea.selectionStart = effectiveInputArea.selectionEnd = start + 1;
+                }
+            }
+        }
+    }
+
+    function observeDOM() {
+        const observer = new MutationObserver(() => {
+            const newTextarea = findTextarea();
+            if (newTextarea) {
+                if (textarea !== newTextarea || !newTextarea.dataset.keydownListenerAttached) {
+                    if (textarea && textarea.dataset.keydownListenerAttached) {
+                        textarea.removeEventListener('keydown', handleKeydown, true);
+                        delete textarea.dataset.keydownListenerAttached;
+                    }
+                    textarea = newTextarea;
+                    textarea.addEventListener('keydown', handleKeydown, true);
+                    textarea.dataset.keydownListenerAttached = 'true';
+                }
+            } else {
+                if (textarea && textarea.dataset.keydownListenerAttached) {
+                    textarea.removeEventListener('keydown', handleKeydown, true);
+                    delete textarea.dataset.keydownListenerAttached;
+                    textarea = null;
+                }
+            }
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+
+        setTimeout(() => {
+            const initialTextarea = findTextarea();
+            if (initialTextarea && !initialTextarea.dataset.keydownListenerAttached) {
+                textarea = initialTextarea;
+                textarea.addEventListener('keydown', handleKeydown, true);
+                textarea.dataset.keydownListenerAttached = 'true';
+            }
+        }, 500);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => setTimeout(observeDOM, 0));
+    } else {
+        setTimeout(observeDOM, 0);
+    }
+})();

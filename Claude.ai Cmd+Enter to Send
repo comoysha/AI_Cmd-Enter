@@ -1,0 +1,33 @@
+// ==UserScript==
+// @name         Claude.ai Cmd+Enter to Send
+// @namespace    http://tampermonkey.net/
+// @version      1.0
+// @description  Makes Enter create a newline and Cmd+Enter send the message
+// @author       Based on Harshil Kamdar's solution
+// @match        https://claude.ai/*
+// @run-at       document-start
+// @grant        none
+// ==/UserScript==
+
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+
+    const pm = document.querySelector('.ProseMirror');
+    if (!pm?.contains(document.activeElement) && document.activeElement !== pm) return;
+
+    e.preventDefault();
+    e.stopImmediatePropagation();
+
+    if (e.metaKey) {
+        // Cmd+Enter → Send message
+        const sendButton = document.querySelector('[data-testid="send-button"]')
+                        || document.querySelector('button[aria-label*="Send"]');
+        if (sendButton) sendButton.click();
+    } else {
+        // Plain Enter → Insert newline via Tiptap's command chain
+        const editor = pm.editor;
+        if (editor?.chain) {
+            editor.chain().focus().splitBlock().run();
+        }
+    }
+}, true);
