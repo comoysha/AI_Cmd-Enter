@@ -12,11 +12,60 @@
 (function() {
     'use strict';
 
+    function insertTextareaNewline(textarea) {
+        const start = textarea.selectionStart ?? textarea.value.length;
+        const end = textarea.selectionEnd ?? textarea.value.length;
+        const value = textarea.value ?? '';
+
+        const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+        const nextValue = value.slice(0, start) + '\n' + value.slice(end);
+
+        if (setter) {
+            setter.call(textarea, nextValue);
+        } else {
+            textarea.value = nextValue;
+        }
+
+        textarea.selectionStart = textarea.selectionEnd = start + 1;
+        textarea.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            inputType: 'insertLineBreak',
+            data: '\n'
+        }));
+    }
+
+    function insertContentEditableNewline(editor) {
+        editor.focus();
+
+        const selection = window.getSelection();
+        if (!selection || selection.rangeCount === 0) return;
+
+        const range = selection.getRangeAt(0);
+        range.deleteContents();
+
+        const br = document.createElement('br');
+        range.insertNode(br);
+
+        const spacer = document.createTextNode('\u200B');
+        br.parentNode.insertBefore(spacer, br.nextSibling);
+
+        range.setStartAfter(spacer);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+
+        editor.dispatchEvent(new InputEvent('input', {
+            bubbles: true,
+            inputType: 'insertLineBreak',
+            data: '\n'
+        }));
+    }
+
     document.addEventListener('keydown', function(e) {
         if (e.key !== 'Enter') return;
 
-        const textarea = document.querySelector('#prompt-textarea');
-        if (!textarea || e.target !== textarea) return;
+        const editor = document.querySelector('#prompt-textarea');
+        if (!editor || !editor.contains(e.target)) return;
 
         e.preventDefault();
         e.stopImmediatePropagation();
@@ -29,16 +78,11 @@
                 sendButton.click();
             }
         } else {
-            // Enter: 换行
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const value = textarea.value;
-
-            textarea.value = value.substring(0, start) + '\n' + value.substring(end);
-            textarea.selectionStart = textarea.selectionEnd = start + 1;
-
-            // 触发 input 事件
-            textarea.dispatchEvent(new Event('input', {bubbles: true}));
+            if (editor instanceof HTMLTextAreaElement) {
+                insertTextareaNewline(editor);
+            } else if (editor.isContentEditable) {
+                insertContentEditableNewline(editor);
+            }
         }
     }, true);
 })();
